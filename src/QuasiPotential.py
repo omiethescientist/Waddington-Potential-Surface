@@ -5,9 +5,6 @@ from scipy.integrate import odeint
 import numpy as np
 import math
 
-#Import python module for gillespie simulations
-import random
-
 #Import python module for multiprocessing
 import multiprocessing as mp
 
@@ -90,9 +87,10 @@ def intgrate_potential_path(odesys,
         t_list.append(t)
     return x_list, v_list
 
-def paths_2D_grid(xy_min:float, xy_max:float, xy_step:float, n_jobs:int, *params):
+def QuasiPotential2D(xy_min:float, xy_max:float, xy_step:float, attractor_tol: float = 1e-6, n_jobs:int = 4, *params):
     """
-    function for integrating trajectories on two dimensional grid grid
+    function for integrating trajectories on two dimensional grid 
+    then align them based on their attractors and initial states
 
     Parameters:
     xy_min - minimum value of the grid of values
@@ -103,22 +101,62 @@ def paths_2D_grid(xy_min:float, xy_max:float, xy_step:float, n_jobs:int, *params
     if n_jobs is -1, we use all the cpus available.
 
     Returns:
-    paths - list of list of state lists and potential list for a grid of initial states
+    x_paths - X Coordinates of the Quasipotential Surface
+    y_paths - Y Coordinates of the Quasipotential Surface
+    v_paths - Potential Coordinates of the Quasipotenital Surface
+    attractors - Return attractors found on the quasipotential surface at grid coordinates
     """
+    # Based on whether or not we are using all or some of the processors
     if n_jobs > 0:
+        #Run serially if using 1
         if n_jobs = 1:
             paths = [intgrate_potential_path([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)]
+        #Run in parallel
         else:
             pool  = mp.Pool(n_jobs)
             paths = pool.startmap(integrate_potential_path, [([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)])
             pool.close()
+    #Run in parallel with all processors
     else:
         cpus = mp.cpu_count()
         pool = mp.Pool(cpus)
         paths = pool.startmap(integrate_potential_path, [([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)]) 
         pool.close()
-    return paths
+    
+    #Alignment of path potentials
+    attractors = []
+    intial_states = []
+    x_paths = []
+    y_paths = []
+    v_paths = []
+    for p in range(len(paths)):
+        path = paths[p]
+        
+        # Add the X path and Y path as they don't need changing
+        X, Y = path[0]
+        x_paths.append(X)
+        y_paths.append(Y)
+        
+        V = path[1]
+        initial_state = (X[0], Y[0], V[0])
+        attractor = (X[-1], Y[-1], V[-1])
 
-#To Do Path alignment and stochastic simulations
-def path_alignment
-
+        #If this is the first path
+        if len(attractors) == 0:
+            attractors.append(attractor)
+            initial_states.append(initial_state)
+        else:
+            attractor_prev = attractors[-1]
+            dist = sum([(i-j)**2 for i,j in zip(attractor, attractor_prev)])
+            #If these paths have the same attractor, align to the previous attractor
+            if dist < attractor_tol:
+                v_path = [v - (attractor[2] - attractor_prev[2]) for v in V]
+                v_paths.append(v_path)
+                initial_states.append(initial_state)
+            #If they don't have the smae attractor, align to the previous initial state
+            else:
+                initial_state_prev = initial_staes[-1]
+                v_path = [v - (initial_state[2] - initial_state_prev[2]) for v in V]
+                v_paths.append(v_path)
+                attractors.append(attractor)
+    return x_paths, y_paths, v_paths, attractors
