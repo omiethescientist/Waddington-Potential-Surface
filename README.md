@@ -7,4 +7,4 @@ For review paper TBA.
 
 Gillespie Code is not mine, please see https://github.com/sueskind/gillespie for more information. All gillespie code is their's.
 
-![alt text] https://raw.githubusercontent.com/omiethescientist/Waddington-Potential-Surface/main/Figures/landscape_animation.gif
+![alt text](https://raw.githubusercontent.com/omiethescientist/Waddington-Potential-Surface/main/Figures/landscape_animation.gif)
