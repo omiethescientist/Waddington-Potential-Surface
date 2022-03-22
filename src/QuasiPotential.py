@@ -1,7 +1,7 @@
 #Import python modules for deterministic simulations
 import sympy as sm
-from scipy.optimize import curve_fit
 from scipy.integrate import odeint
+from scipy.spatial.distance import euclidean
 import numpy as np
 import math
 
@@ -11,7 +11,7 @@ import multiprocessing as mp
 #Numerical Integration of the Waddington epigeneitc landscape
 #Given an ode system for your genetic circuit, calculate the trajectoires alone the potential surface and then align them.
 
-def intgrate_potential_path(odesys, 
+def integrate_potential_path(odesys, 
         x0, 
         t0:float, 
         V0:float, 
@@ -19,7 +19,7 @@ def intgrate_potential_path(odesys,
         tstep:float,
         *params,
         ):
-	"""
+    """
     function for integrating trajectories on the potential function
     
     Parameters:
@@ -51,7 +51,7 @@ def intgrate_potential_path(odesys,
     v_list - list of potential values at each state of the system along its trajectory on the phase plane
     """
     #set convergence criterion
-	del_dist = np.sqrt(2*tol**2)
+    del_dist = np.sqrt(2*tol**2)
 
     #Set initial states
     x_list = [x0]
@@ -85,14 +85,17 @@ def intgrate_potential_path(odesys,
         x_list.append(x.tolist())
         v_list.append(V)
         t_list.append(t)
-    return x_list, v_list
+    return x_list, v_list, t_list
 
-def QuasiPotential2D(xy_min:float, xy_max:float, xy_step:float, attractor_tol: float = 1e-6, n_jobs:int = 4, *params):
+def QuasiPotential2D(odesys, ode_params, integration_params, xy_min:float, xy_max:float, xy_step:float, attractor_tol: float = 1e-6, n_jobs:int = 4):
     """
     function for integrating trajectories on two dimensional grid 
     then align them based on their attractors and initial states
 
     Parameters:
+    odesys - function that represents the system of ordinary differential equations
+    ode_params - parameters for the odesys
+    integration_params - parameters for integrating the potential path via the integrate_potential_path function
     xy_min - minimum value of the grid of values
     xy_max - maximum value of the grid of values
     xy_step - step size acros the range of xy_values
@@ -109,23 +112,23 @@ def QuasiPotential2D(xy_min:float, xy_max:float, xy_step:float, attractor_tol: f
     # Based on whether or not we are using all or some of the processors
     if n_jobs > 0:
         #Run serially if using 1
-        if n_jobs = 1:
-            paths = [intgrate_potential_path([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)]
+        if n_jobs == 1:
+            paths = [integrate_potential_path(odesys,[x,y], *integration_params, *ode_params) for x in np.arange(xy_min, xy_max, xy_step) for y in np.arange(xy_min, xy_max, xy_step)]
         #Run in parallel
         else:
             pool  = mp.Pool(n_jobs)
-            paths = pool.startmap(integrate_potential_path, [([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)])
+            paths = pool.starmap(integrate_potential_path, [(odesys, [x,y], *integration_params, *ode_params) for x in np.arange(xy_min, xy_max, xy_step) for y in np.arange(xy_min, xy_max, xy_step)])
             pool.close()
     #Run in parallel with all processors
     else:
         cpus = mp.cpu_count()
         pool = mp.Pool(cpus)
-        paths = pool.startmap(integrate_potential_path, [([x,y], *params) for x in range(xy_min, xy_max, xy_step) for y in range(xy_min, xy_max, xy_step)]) 
+        paths = pool.starmap(integrate_potential_path, [(odesys, [x,y], *integration_params, *ode_params) for x in np.arange(xy_min, xy_max, xy_step) for y in np.arange(xy_min, xy_max, xy_step)]) 
         pool.close()
     
     #Alignment of path potentials
     attractors = []
-    intial_states = []
+    initial_states = []
     x_paths = []
     y_paths = []
     v_paths = []
@@ -133,29 +136,33 @@ def QuasiPotential2D(xy_min:float, xy_max:float, xy_step:float, attractor_tol: f
         path = paths[p]
         
         # Add the X path and Y path as they don't need changing
-        X, Y = path[0]
+        X, Y = zip(*path[0])
         x_paths.append(X)
         y_paths.append(Y)
         
         V = path[1]
-        initial_state = (X[0], Y[0], V[0])
+        initial_state = (X[0], Y[0],V[0])
         attractor = (X[-1], Y[-1], V[-1])
 
         #If this is the first path
         if len(attractors) == 0:
             attractors.append(attractor)
             initial_states.append(initial_state)
+            v_paths.append(V)
         else:
-            attractor_prev = attractors[-1]
-            dist = sum([(i-j)**2 for i,j in zip(attractor, attractor_prev)])
-            #If these paths have the same attractor, align to the previous attractor
-            if dist < attractor_tol:
+            dists = [euclidean(attractor[:2], attractor_prev[:2]) for attractor_prev in attractors]
+            dist_bools = [dist <= attractor_tol for dist in dists]
+            #If there is a similar attractor
+            if sum(dist_bools) > 0:
+                attractor_prev = attractors[dist_bools.index(True)]
                 v_path = [v - (attractor[2] - attractor_prev[2]) for v in V]
                 v_paths.append(v_path)
                 initial_states.append(initial_state)
-            #If they don't have the smae attractor, align to the previous initial state
+            #If there is no similar attractor, align to the previous initial state
             else:
-                initial_state_prev = initial_staes[-1]
+                dists = [euclidean(initial_state[:2], initial_state_prev[:2]) for initial_state_prev in initial_states]
+                dist_bools = [dist <= np.sqrt(2*xy_step**2) for dist in dists]
+                initial_state_prev = initial_states[dist_bools.index(True)]
                 v_path = [v - (initial_state[2] - initial_state_prev[2]) for v in V]
                 v_paths.append(v_path)
                 attractors.append(attractor)
