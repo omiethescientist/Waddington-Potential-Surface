@@ -5,6 +5,6 @@ Based on paper by Bhattacharya et al 2011: https://www.ncbi.nlm.nih.gov/pmc/arti
 
 For review paper TBA.
 
-Gillespie Code is not mine, please see https://github.com/sueskind/gillespie for more information. All gillespie code is their's.
+Gillespie Code is not mine, please see https://github.com/sueskind/gillespie for more information. All Gillespie code is their's.
 
 ![alt text](https://raw.githubusercontent.com/omiethescientist/Waddington-Potential-Surface/main/Figures/landscape_animation.gif)
